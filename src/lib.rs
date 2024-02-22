@@ -17,10 +17,10 @@ pub enum KeyCode {
 // ptr_mut!(variable, Type) -> &mut variable as *mut VariableType as *mut Type;
 
 #[cfg(all(unix))]
-pub mod unix;
+mod unix;
 
 #[cfg(target_os = "windows")]
-pub mod windows;
+mod windows;
 
 pub fn read_key() -> KeyCode {
     #[cfg(target_os = "windows")]

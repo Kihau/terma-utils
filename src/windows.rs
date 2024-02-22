@@ -176,8 +176,11 @@ pub(crate) fn read_key() -> KeyCode {
     }
 }
 
+const CSI: &'static str = "\x1b[";
+
 pub(crate) fn clear_console() {
-    print!("\x1b[2J");
+    print!("{CSI}1;1H");
+    print!("{CSI}0J");
 
     unsafe {
         let handle = GetStdHandle(STD_OUTPUT_HANDLE);
