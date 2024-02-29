@@ -1,12 +1,37 @@
 use std::thread;
+use terma_utils::{
+    KeyCode,
+    terma_init,
+    read_key,
+    console_clear,
+    cursor_move,
+    cursor_pos,
+    color_fg,
+    color_bg,
+    color_reset,
+};
 
-use terma_utils::{KeyCode, read_key, clear_console, move_cursor};
+fn console_test1() {
+    loop {
+        let value = read_key();
+        color_bg(255, 0, 0);
+        console_clear();
+        cursor_move(30, 120);
+        println!("{value:?}");
 
-fn moving_x() {
-    let mut x = 1;
-    let mut y = 1;
+        let value = read_key();
+        color_reset();
+        console_clear();
+        cursor_move(30, 120);
+        println!("{value:?}");
+    }
+}
 
-    clear_console();
+fn console_test2() {
+    let mut x = 1i16;
+    let mut y = 1i16;
+
+    console_clear();
     loop {
         let value = read_key();
         match value {
@@ -16,34 +41,34 @@ fn moving_x() {
             KeyCode::ArrowLeft => y -= 1,
             _ => {}
         }
-        // clear_console();
+        // console_clear();
         // println!("{value:?}");
-        move_cursor(x, y);
+        cursor_move(x, y);
         print!("x");
         let _ = std::io::Write::flush(&mut std::io::stdout());
         // thread::sleep_ms(2000);
     }
 }
 
-fn console_test() {
+fn console_test3() {
     loop {
-        let value = read_key();
-        clear_console();
-        println!("{value:?}");
-        // thread::sleep_ms(2000);
+        println!("{:?}", read_key());
+        cursor_pos();
     }
+    // let _ = cursor_pos();
+    // let _ = cursor_pos();
+    // let _ = cursor_pos();
+    // let _ = cursor_pos();
+    // let _ = cursor_pos();
+    // let _ = cursor_pos();
 }
 
+fn console_test4() { }
+
 fn main() {
-    // let _ = std::process::Command::new("sh")
-    //     .args(["-c", "clear"])
-    //     .spawn();
+    terma_init();
 
-    // let _ = std::process::Command::new("clear").spawn();
-
-    println!("Hello, world!");
-    // thread::sleep_ms(2000);
-
-    // console_test();
-    moving_x();
+    // console_test1();
+    // console_test2();
+    console_test3();
 }

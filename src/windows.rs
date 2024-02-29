@@ -114,6 +114,39 @@ extern "system" {
     fn SetConsoleCursorPosition(handle: *const void, cursor_position: Coord) -> i32;
 }
 
+// print output buffer
+// print ansi query code
+// check if query returned something
+// if yes, set virtual supported to true
+// if not, set virtual supported to false and clear output buffer
+pub fn terma_init() {
+    unsafe {
+        let handle = GetStdHandle(STD_OUTPUT_HANDLE);
+        if handle == std::ptr::null() {
+            return;
+        }
+
+        let mut mode = 0u32;
+        GetConsoleMode(handle, &mut mode as *mut u32);
+        println!("{mode:b}");
+        println!("{mode:x}");
+        println!("{mode}");
+
+        mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+        SetConsoleMode(handle, mode);
+        GetConsoleMode(handle, &mut mode as *mut u32);
+
+        println!("{mode:b}");
+        println!("{mode:x}");
+        println!("{mode}");
+
+        let handle = GetStdHandle(STD_INPUT_HANDLE);
+        if handle == std::ptr::null() {
+            return;
+        }
+    }
+}
+
 unsafe fn fallback_read_key() -> KeyCode {
     use std::io::Read;
 
@@ -122,7 +155,7 @@ unsafe fn fallback_read_key() -> KeyCode {
     return KeyCode::Char(char::from_u32_unchecked(buffer[0] as u32));
 }
 
-pub(crate) fn read_key() -> KeyCode {
+pub fn read_key() -> KeyCode {
     unsafe {
         let handle = GetStdHandle(STD_INPUT_HANDLE);
         if handle == std::ptr::null() {
@@ -176,58 +209,80 @@ pub(crate) fn read_key() -> KeyCode {
     }
 }
 
+unsafe fn legacy_console_clear() {
+    let handle = GetStdHandle(STD_OUTPUT_HANDLE);
+    if handle == std::ptr::null() {
+        return;
+    }
+
+    let mut buffer_info = ConsoleBufferInfo::default();
+    let result = GetConsoleScreenBufferInfo(handle, &mut buffer_info as *mut ConsoleBufferInfo);
+    if result == 0 {
+        return;
+    }
+
+    let rect = SmallRect {
+        left:   0,
+        top:    0,
+        right:  buffer_info.buffer_size.x,
+        bottom: buffer_info.buffer_size.y,
+    };
+
+    let target = Coord {
+        x: 0,
+        y: 0 - buffer_info.buffer_size.y
+    };
+
+    let fill = CharInfo {
+        unicode_char: 32,
+        attributes:   buffer_info.attributes,
+    };
+
+    let result = ScrollConsoleScreenBufferW(handle, &rect as *const SmallRect, std::ptr::null(), target, &fill as *const CharInfo);
+    if result == 0 {
+        return;
+    }
+
+    buffer_info.cursor_position.x = 0;
+    buffer_info.cursor_position.y = 0;
+    SetConsoleCursorPosition(handle, buffer_info.cursor_position);
+
+}
+
 const CSI: &'static str = "\x1b[";
 
-pub(crate) fn clear_console() {
+pub fn console_clear() {
     print!("{CSI}1;1H");
     print!("{CSI}0J");
 
     unsafe {
-        let handle = GetStdHandle(STD_OUTPUT_HANDLE);
-        if handle == std::ptr::null() {
-            return;
-        }
-
-        let mut buffer_info = ConsoleBufferInfo::default();
-        GetConsoleScreenBufferInfo(handle, &mut buffer_info as *mut ConsoleBufferInfo);
-
-        let rect = SmallRect {
-            left: 0,
-            top: 0,
-            right: buffer_info.buffer_size.x,
-            bottom: buffer_info.buffer_size.y,
-        };
-
-        let target = Coord {
-            x: 0,
-            y: 0 - buffer_info.buffer_size.y
-        };
-
-        let fill = CharInfo {
-            unicode_char: 32,
-            attributes: buffer_info.attributes,
-        };
-
-        ScrollConsoleScreenBufferW(handle, &rect as *const SmallRect, std::ptr::null(), target, &fill as *const CharInfo);
-
-        buffer_info.cursor_position.x = 0;
-        buffer_info.cursor_position.y = 0;
-        SetConsoleCursorPosition(handle, buffer_info.cursor_position);
+        legacy_console_clear();
     }
 }
 
-pub(crate) fn move_cursor(x: u16, y: u16) {
+pub fn move_cursor(x: i16, y: i16) {
+    print!("{CSI}{x};{y}H");
+
     unsafe {
-        let handle = GetStdHandle(STD_OUTPUT_HANDLE);
-        if handle == std::ptr::null() {
-            return;
-        }
-
-        let position = Coord { 
-            x: x as i16,
-            y: y as i16 
-        };
-
-        SetConsoleCursorPosition(handle, position);
+        legacy_cursor_move(x - 1, y - 1);
     }
+}
+
+unsafe fn legacy_cursor_move(x: i16, y: i16) {
+    let handle = GetStdHandle(STD_OUTPUT_HANDLE);
+    if handle == std::ptr::null() {
+        return;
+    }
+
+    let position = Coord { x, y };
+    SetConsoleCursorPosition(handle, position);
+}
+
+
+pub fn color_bg(red: u8, green: u8, blue: u8) {
+    print!("{CSI}48;2;{red};{green};{blue}m");
+}
+
+pub fn color_fg(red: u8, green: u8, blue: u8) {
+    print!("{CSI}38;2;{red};{green};{blue}m");
 }

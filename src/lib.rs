@@ -1,4 +1,10 @@
 #[derive(Debug)]
+pub struct Pos {
+    pub x: u16, 
+    pub y: u16,
+}
+
+#[derive(Debug)]
 pub enum KeyCode {
     Char(char),
     Enter,
@@ -12,36 +18,30 @@ pub enum KeyCode {
     Error,
 }
 
-// ffi pointer convertion macro:
-// ptr!(variable, Type)     -> &variable as *const VariableType as *const Type;
-// ptr_mut!(variable, Type) -> &mut variable as *mut VariableType as *mut Type;
-
 #[cfg(all(unix))]
 mod unix;
 
 #[cfg(target_os = "windows")]
 mod windows;
 
-pub fn read_key() -> KeyCode {
-    #[cfg(target_os = "windows")]
-    return windows::read_key();
+#[cfg(all(unix))]
+pub use unix::{
+    terma_init,
+    read_key,
+    console_clear,
+    cursor_move,
+    cursor_pos,
+    color_bg,
+    color_fg,
+    color_reset,
+};
 
-    #[cfg(all(unix))]
-    return unix::read_key();
-}
-
-pub fn clear_console() {
-    #[cfg(target_os = "windows")]
-    return windows::clear_console();
-
-    #[cfg(all(unix))]
-    return unix::clear_console();
-}
-
-pub fn move_cursor(x: u16, y: u16) {
-    #[cfg(target_os = "windows")]
-    return windows::move_cursor(y, x);
-
-    #[cfg(all(unix))]
-    return unix::move_cursor(x, y);
-}
+#[cfg(target_os = "windows")]
+pub use windows::{
+    terma_init,
+    read_key,
+    console_clear,
+    move_cursor,
+    color_bg,
+    color_fg,
+};
