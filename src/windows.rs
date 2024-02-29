@@ -127,6 +127,9 @@ pub fn terma_init() {
         // check if query returned something
         // if yes, set virtual supported to true
         // if not, set virtual supported to false and clear output buffer
+
+        // no ansi -> WriteConsole buffers output(?), set correct console modes for printing
+        // ansi -> enable virtual processing
         supports_ansi = true;
     }
 }
@@ -274,7 +277,18 @@ pub fn cursor_get() -> Pos {
         }
 
         if supports_ansi {
-            todo!();
+            let ansi_cursor_get = "\x1b[6n";
+            print_str(ansi_cursor_get);
+
+            let handle = GetStdHandle(STD_INPUT_HANDLE);
+            if handle == std::ptr::null() {
+                return KeyCode::Error
+            }
+
+            let mut buffer = [0u8; 64];
+            ReadConsoleA(handle, buffer.as_mut_ptr() as *mut void, 64, std::ptr::null_mut(), std::ptr::null());
+            println!("{buffer:?}");
+            return Pos { x: 0, y: 0 };
         } else {
             let mut buffer_info = ConsoleBufferInfo::default();
             let _ = GetConsoleScreenBufferInfo(handle, &mut buffer_info as *mut ConsoleBufferInfo);
