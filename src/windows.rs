@@ -117,6 +117,7 @@ extern "system" {
     fn GetConsoleScreenBufferInfo(handle: *const void, buffer_info: *mut ConsoleBufferInfo) -> i32;
     fn ScrollConsoleScreenBufferW(handle: *const void, scroll: *const SmallRect, clip: *const SmallRect, destination: Coord, fill: *const CharInfo) -> i32;
     fn SetConsoleCursorPosition(handle: *const void, cursor_position: Coord) -> i32;
+    fn SetConsoleTextAttribute(handle: *const void, attributes: u16) -> i32;
 }
 
 pub fn terma_init() {
@@ -311,7 +312,7 @@ pub fn color_bg(red: u8, green: u8, blue: u8) {
             let ansi_color_bg = format!("\x1b[48;2;{red};{green};{blue}m");
             print_str(&ansi_color_bg);
         } else {
-            todo!();
+            // Not supported. Fallback to legacy windows console colors?
         }
     }
 }
@@ -322,7 +323,7 @@ pub fn color_fg(red: u8, green: u8, blue: u8) {
             let ansi_color_fg = format!("\x1b[38;2;{red};{green};{blue}m");
             print_str(&ansi_color_fg);
         } else {
-            todo!();
+            // Not supported. Fallback to legacy windows console colors?
         }
     }
 }
@@ -333,7 +334,12 @@ pub fn color_reset() {
             let ansi_reset = "\x1b[0m";
             print_str(ansi_reset);
         } else {
-            todo!();
+            let handle = GetStdHandle(STD_OUTPUT_HANDLE);
+            if handle == std::ptr::null() {
+                return;
+            }
+            let color_white = 15;
+            SetConsoleTextAttribute(handle, color_white);
         }
     }
 }

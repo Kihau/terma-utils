@@ -24,12 +24,15 @@ mod unix;
 #[cfg(target_os = "windows")]
 mod windows;
 
+
+// TODO: 
+//   - try_read_key() - Non-blocking read_key
+
 #[cfg(all(unix))]
 pub use unix::{
     terma_init,
     print_str,
     read_key,
-    // try_read_key, - TODO: Non-blocking read_key
     console_clear,
     cursor_get,
     cursor_set,
@@ -43,7 +46,6 @@ pub use windows::{
     terma_init,
     print_str,
     read_key,
-    // try_read_key,
     console_clear,
     cursor_get,
     cursor_set,
