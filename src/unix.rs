@@ -1,8 +1,8 @@
 use super::KeyCode;
 use super::Pos;
 
-const STDIN:   i32 = 0;
-const STDOUT:   i32 = 0;
+const STDIN:  i32 = 0;
+const STDOUT: i32 = 0;
 
 #[allow(non_camel_case_types)]
 type void = std::ffi::c_void;
@@ -70,6 +70,18 @@ unsafe fn flush_stdin() {
     }
 }
 
+pub fn print(string: &str) -> usize {
+    unsafe {
+        let bytes_written = write(
+            STDOUT,
+            string.as_ptr() as *const void, 
+            string.len()
+        );
+
+        return bytes_written as usize;
+    }
+}
+
 pub fn read_key() -> KeyCode {
     unsafe {
         let mut old_settings = Termios::default();
@@ -121,11 +133,11 @@ pub fn read_key() -> KeyCode {
     }
 }
 
-pub fn cursor_move(x: i16, y: i16) {
+pub fn cursor_set(x: i16, y: i16) {
     unsafe {
         //                    VVVVVVVV Can be changed to something like a 64 byte buffer to avoid useless allocations.
-        let ansi_cursor_move = format!("\x1b[{x};{y}H");
-        write(STDOUT, ansi_cursor_move.as_str().as_ptr() as *const void, ansi_cursor_move.len());
+        let ansi_cursor_set = format!("\x1b[{x};{y}H");
+        write(STDOUT, ansi_cursor_set.as_str().as_ptr() as *const void, ansi_cursor_set.len());
     }
 }
 
@@ -171,7 +183,7 @@ fn parse_pos(buffer: &[u8]) -> Pos {
     return Pos { x, y }
 }
 
-pub fn cursor_pos() -> Pos {
+pub fn cursor_get() -> Pos {
     unsafe {
         let mut old_settings = Termios::default();
         tcgetattr(STDIN, &mut old_settings as *mut Termios);
@@ -183,8 +195,8 @@ pub fn cursor_pos() -> Pos {
 
         flush_stdin();
 
-        let ansi_cursor_pos = "\x1b[6n";
-        write(STDOUT, ansi_cursor_pos.as_ptr() as *const void, ansi_cursor_pos.len());
+        let ansi_cursor_get = "\x1b[6n";
+        write(STDOUT, ansi_cursor_get.as_ptr() as *const void, ansi_cursor_get.len());
 
         let mut buffer = [0u8; 16];
         let _ = read(STDIN, buffer.as_mut_ptr() as *mut void, 16);
@@ -226,11 +238,5 @@ pub fn color_fg(red: u8, green: u8, blue: u8) {
         //                  VVVVVVV Can be changed to something like a 64 byte buffer to avoid useless allocations.
         let ansi_color_bg = format!("\x1b[38;2;{red};{green};{blue}m");
         write(STDOUT, ansi_color_bg.as_str().as_ptr() as *const void, ansi_color_bg.len());
-    }
-}
-
-pub fn print(string: &str) {
-    unsafe {
-        write(STDOUT, string.as_ptr() as *const void, string.len());
     }
 }

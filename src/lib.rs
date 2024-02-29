@@ -27,10 +27,11 @@ mod windows;
 #[cfg(all(unix))]
 pub use unix::{
     terma_init,
+    print,
     read_key,
     console_clear,
-    cursor_move,
-    cursor_pos,
+    cursor_get,
+    cursor_set,
     color_bg,
     color_fg,
     color_reset,
@@ -39,9 +40,12 @@ pub use unix::{
 #[cfg(target_os = "windows")]
 pub use windows::{
     terma_init,
+    print,
     read_key,
     console_clear,
-    move_cursor,
+    cursor_get,
+    cursor_set,
     color_bg,
     color_fg,
+    color_reset,
 };

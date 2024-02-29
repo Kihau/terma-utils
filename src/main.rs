@@ -4,8 +4,8 @@ use terma_utils::{
     terma_init,
     read_key,
     console_clear,
-    cursor_move,
-    cursor_pos,
+    cursor_get,
+    cursor_set,
     color_fg,
     color_bg,
     color_reset,
@@ -16,13 +16,13 @@ fn console_test1() {
         let value = read_key();
         color_bg(255, 0, 0);
         console_clear();
-        cursor_move(30, 120);
+        cursor_set(30, 120);
         println!("{value:?}");
 
         let value = read_key();
         color_reset();
         console_clear();
-        cursor_move(30, 120);
+        cursor_set(30, 120);
         println!("{value:?}");
     }
 }
@@ -41,26 +41,23 @@ fn console_test2() {
             KeyCode::ArrowLeft => y -= 1,
             _ => {}
         }
-        // console_clear();
-        // println!("{value:?}");
-        cursor_move(x, y);
-        print!("x");
-        let _ = std::io::Write::flush(&mut std::io::stdout());
-        // thread::sleep_ms(2000);
+
+        console_clear();
+        cursor_set(x - 1, y);
+        println!("   TERMA UTILS");
+        cursor_set(x, y);
+        println!("{:?}", cursor_get());
+        cursor_set(x + 1, y);
+        println!("    {:?}", value);
+        cursor_set(x + 2, y + 8);
     }
 }
 
 fn console_test3() {
     loop {
         println!("{:?}", read_key());
-        cursor_pos();
+        println!("{:?}", cursor_get());
     }
-    // let _ = cursor_pos();
-    // let _ = cursor_pos();
-    // let _ = cursor_pos();
-    // let _ = cursor_pos();
-    // let _ = cursor_pos();
-    // let _ = cursor_pos();
 }
 
 fn console_test4() { }
@@ -69,6 +66,6 @@ fn main() {
     terma_init();
 
     // console_test1();
-    // console_test2();
-    console_test3();
+    console_test2();
+    // console_test3();
 }
