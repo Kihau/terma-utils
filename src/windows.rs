@@ -196,7 +196,7 @@ pub fn read_key() -> KeyCode {
     }
 }
 
-pub fn print(string: &str) -> usize {
+pub fn print_str(string: &str) -> usize {
     unsafe {
         let handle = GetStdHandle(STD_OUTPUT_HANDLE);
         if handle == std::ptr::null() {
@@ -225,10 +225,10 @@ pub fn console_clear() {
 
         if supports_ansi {
             let ansi_move = "\x1b[1;1H";
-            let _ = print(ansi_move);
+            let _ = print_str(ansi_move);
 
             let ansi_clear = "\x1b[0J";
-            let _ = print(ansi_clear);
+            let _ = print_str(ansi_clear);
         } else {
             let mut buffer_info = ConsoleBufferInfo::default();
             let result = GetConsoleScreenBufferInfo(handle, &mut buffer_info as *mut ConsoleBufferInfo);
@@ -266,20 +266,39 @@ pub fn console_clear() {
 }
 
 pub fn cursor_get() -> Pos {
-    todo!();
+    unsafe {
+        let handle = GetStdHandle(STD_OUTPUT_HANDLE);
+        if handle == std::ptr::null() {
+            return Pos { x: 0, y: 0 };
+        }
+
+        if supports_ansi {
+            todo!();
+        } else {
+            let mut buffer_info = ConsoleBufferInfo::default();
+            let _ = GetConsoleScreenBufferInfo(handle, &mut buffer_info as *mut ConsoleBufferInfo);
+
+            let pos = Pos {
+                x: buffer_info.cursor_position.x as u16,
+                y: buffer_info.cursor_position.y as u16,
+            };
+
+            return pos;
+        }
+    }
 }
 
 pub fn cursor_set(x: i16, y: i16) {
     unsafe {
-        let handle = GetStdHandle(STD_OUTPUT_HANDLE);
-        if handle == std::ptr::null() {
-            return;
-        }
-
         if supports_ansi {
             let ansi_cursor_set = format!("\x1b[{x};{y}H");
-            let _ = print(&ansi_cursor_set);
+            let _ = print_str(&ansi_cursor_set);
         } else {
+            let handle = GetStdHandle(STD_OUTPUT_HANDLE);
+            if handle == std::ptr::null() {
+                return;
+            }
+
             let position = Coord { x: x - 1, y: y - 1 };
             SetConsoleCursorPosition(handle, position);
         }
@@ -287,13 +306,34 @@ pub fn cursor_set(x: i16, y: i16) {
 }
 
 pub fn color_bg(red: u8, green: u8, blue: u8) {
-    todo!();
+    unsafe {
+        if supports_ansi {
+            let ansi_color_bg = format!("\x1b[48;2;{red};{green};{blue}m");
+            print_str(&ansi_color_bg);
+        } else {
+            todo!();
+        }
+    }
 }
 
 pub fn color_fg(red: u8, green: u8, blue: u8) {
-    todo!();
+    unsafe {
+        if supports_ansi {
+            let ansi_color_fg = format!("\x1b[38;2;{red};{green};{blue}m");
+            print_str(&ansi_color_fg);
+        } else {
+            todo!();
+        }
+    }
 }
 
 pub fn color_reset() {
-    todo!();
+    unsafe {
+        if supports_ansi {
+            let ansi_reset = "\x1b[0m";
+            print_str(ansi_reset);
+        } else {
+            todo!();
+        }
+    }
 }

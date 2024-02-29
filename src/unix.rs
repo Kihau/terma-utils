@@ -70,7 +70,7 @@ unsafe fn flush_stdin() {
     }
 }
 
-pub fn print(string: &str) -> usize {
+pub fn print_str(string: &str) -> usize {
     unsafe {
         let bytes_written = write(
             STDOUT,
@@ -196,7 +196,7 @@ pub fn cursor_get() -> Pos {
         flush_stdin();
 
         let ansi_cursor_get = "\x1b[6n";
-        write(STDOUT, ansi_cursor_get.as_ptr() as *const void, ansi_cursor_get.len());
+        print_str(ansi_cursor_get);
 
         let mut buffer = [0u8; 16];
         let _ = read(STDIN, buffer.as_mut_ptr() as *mut void, 16);
@@ -212,31 +212,31 @@ pub fn cursor_get() -> Pos {
 pub fn console_clear() {
     unsafe {
         let ansi_move = "\x1b[1;1H";
-        write(STDOUT, ansi_move.as_ptr() as *const void, ansi_move.len());
+        print_str(ansi_move);
 
         let ansi_clear = "\x1b[0J";
-        write(STDOUT, ansi_clear.as_ptr() as *const void, ansi_clear.len());
+        print_str(ansi_clear);
     }
 }
 
 pub fn color_reset() {
     unsafe {
         let ansi_reset = "\x1b[0m";
-        write(STDOUT, ansi_reset.as_ptr() as *const void, ansi_reset.len());
+        print_str(ansi_reset);
     }
 }
 
 pub fn color_bg(red: u8, green: u8, blue: u8) {
     unsafe {
         let ansi_color_bg = format!("\x1b[48;2;{red};{green};{blue}m");
-        write(STDOUT, ansi_color_bg.as_str().as_ptr() as *const void, ansi_color_bg.len());
+        print_str(ansi_color_bg.as_str());
     }
 }
 
 pub fn color_fg(red: u8, green: u8, blue: u8) {
     unsafe {
         //                  VVVVVVV Can be changed to something like a 64 byte buffer to avoid useless allocations.
-        let ansi_color_bg = format!("\x1b[38;2;{red};{green};{blue}m");
-        write(STDOUT, ansi_color_bg.as_str().as_ptr() as *const void, ansi_color_bg.len());
+        let ansi_color_fg = format!("\x1b[38;2;{red};{green};{blue}m");
+        print_str(ansi_color_fg.as_str());
     }
 }
