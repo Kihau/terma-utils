@@ -31,9 +31,10 @@ fn console_test2() {
     let mut x = 1i16;
     let mut y = 1i16;
 
-    console_clear();
+    //console_clear();
     loop {
         let value = read_key();
+        //println!("{value:?}");
         match value {
             KeyCode::ArrowUp => x -= 1,
             KeyCode::ArrowDown => x += 1,
@@ -65,7 +66,7 @@ fn console_test4() { }
 fn main() {
     terma_init();
 
-    // console_test1();
-    console_test2();
+    console_test1();
+    // console_test2();
     // console_test3();
 }

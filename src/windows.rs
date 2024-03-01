@@ -12,12 +12,17 @@ type void = std::ffi::c_void;
     CHAR  -> u8
 */
 
+// Console handle codes.
 const STD_INPUT_HANDLE:  u32 = -10i32 as u32;
 const STD_OUTPUT_HANDLE: u32 = -11i32 as u32;
 
-const ENABLE_LINE_INPUT: u32 = 0x0002;
-const ENABLE_ECHO_INPUT: u32 = 0x0004;
+// Input flags.
+const ENABLE_PROCESSED_INPUT: u32        = 0x0001;
+const ENABLE_LINE_INPUT: u32             = 0x0002;
+const ENABLE_ECHO_INPUT: u32             = 0x0004;
 const ENABLE_VIRTUAL_TERMINAL_INPUT: u32 = 0x0200;
+
+// Output flags.
 const ENABLE_VIRTUAL_TERMINAL_PROCESSING: u32 = 0x0004;
 
 // NOTE: Only modified during the initialization (terma_init).
@@ -113,6 +118,7 @@ extern "system" {
     fn SetConsoleMode(handle: *const void, mode: u32) -> i32;
     fn ReadConsoleA(handle: *const void, buffer: *mut void, buffer_size: u32, bytes_read: *mut u32, input_control: *const u32) -> i32;
     fn WriteConsoleW(handle: *const void, buffer: *const void, buffer_size: u32, bytes_written: *mut u32, reserved: *const void) -> i32;
+    fn WriteConsoleA(handle: *const void, buffer: *const void, buffer_size: u32, bytes_written: *mut u32, reserved: *const void) -> i32;
 
     fn GetConsoleScreenBufferInfo(handle: *const void, buffer_info: *mut ConsoleBufferInfo) -> i32;
     fn ScrollConsoleScreenBufferW(handle: *const void, scroll: *const SmallRect, clip: *const SmallRect, destination: Coord, fill: *const CharInfo) -> i32;
@@ -122,12 +128,27 @@ extern "system" {
 
 pub fn terma_init() {
     unsafe {
+        let handle = GetStdHandle(STD_INPUT_HANDLE);
+        if handle != std::ptr::null() {
+            let mut input_mode = 0;
+            input_mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+            input_mode |= ENABLE_PROCESSED_INPUT;
+            SetConsoleMode(handle, input_mode);
+        }
+
+        let handle = GetStdHandle(STD_OUTPUT_HANDLE);
+        if handle != std::ptr::null() {
+            let mut output_mode = 0;
+            output_mode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
+            SetConsoleMode(handle, output_mode);
+        }
+
         // TODO: perform checks here:
         // print ansi query code
         // check if query returned something
         // if yes, set virtual supported to true
         // if not, set virtual supported to false and clear output buffer
-
+        //
         // no ansi -> WriteConsole buffers output(?), set correct console modes for printing
         // ansi -> enable virtual processing
         supports_ansi = true;
@@ -143,6 +164,7 @@ unsafe fn fallback_read_key() -> KeyCode {
 }
 
 // NOTE: Works very poorly on mingw and git bash terminals.
+// TODO(?): ANSI version of read_key for windows?
 pub fn read_key() -> KeyCode {
     unsafe {
         let handle = GetStdHandle(STD_INPUT_HANDLE);
@@ -208,7 +230,7 @@ pub fn print_str(string: &str) -> usize {
         }
 
         let mut bytes_written: u32 = 0;
-        WriteConsoleW(
+        WriteConsoleA(
             handle,
             string.as_ptr() as *const void,
             string.len() as u32,
@@ -282,12 +304,13 @@ pub fn cursor_get() -> Pos {
 
             let handle = GetStdHandle(STD_INPUT_HANDLE);
             if handle == std::ptr::null() {
-                return KeyCode::Error
+                return Pos { x: 0, y: 0 };
             }
 
             let mut buffer = [0u8; 64];
-            ReadConsoleA(handle, buffer.as_mut_ptr() as *mut void, 64, std::ptr::null_mut(), std::ptr::null());
-            println!("{buffer:?}");
+            let mut bytes_read = 0u32;
+            ReadConsoleA(handle, buffer.as_mut_ptr() as *mut void, 64, &mut bytes_read as *mut u32, std::ptr::null());
+            //println!("{buffer:?}");
             return Pos { x: 0, y: 0 };
         } else {
             let mut buffer_info = ConsoleBufferInfo::default();
