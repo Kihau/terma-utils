@@ -70,7 +70,7 @@ unsafe fn flush_stdin() {
     }
 }
 
-pub fn print_str(string: &str) -> usize {
+pub fn print_str(string: &str) -> isize {
     unsafe {
         let bytes_written = write(
             STDOUT,
@@ -78,7 +78,19 @@ pub fn print_str(string: &str) -> usize {
             string.len()
         );
 
-        return bytes_written as usize;
+        return bytes_written as isize;
+    }
+}
+
+pub fn read_buf(buffer: &mut [u8]) -> isize {
+    unsafe {
+        let bytes_read = read(
+            STDIN,
+            buffer.as_mut_ptr() as *mut void,
+            buffer.len()
+        );
+
+        return bytes_read as isize;
     }
 }
 

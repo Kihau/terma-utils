@@ -24,7 +24,6 @@ mod unix;
 #[cfg(target_os = "windows")]
 mod windows;
 
-
 // TODO: 
 //   - try_read_key() - Non-blocking read_key
 
@@ -32,7 +31,11 @@ mod windows;
 pub use unix::{
     terma_init,
     print_str,
+
+    // TODO: Maybe those two should be only public for the crate and outside of the library?
+    read_buf,
     read_key,
+
     console_clear,
     cursor_get,
     cursor_set,
@@ -45,6 +48,7 @@ pub use unix::{
 pub use windows::{
     terma_init,
     print_str,
+    read_buf,
     read_key,
     console_clear,
     cursor_get,

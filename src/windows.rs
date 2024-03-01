@@ -23,6 +23,8 @@ const ENABLE_ECHO_INPUT: u32             = 0x0004;
 const ENABLE_VIRTUAL_TERMINAL_INPUT: u32 = 0x0200;
 
 // Output flags.
+const ENABLE_PROCESSED_OUTPUT: u32            = 0x0001;
+const ENABLE_WRAP_AT_EOL_OUTPUT: u32          = 0x0002;
 const ENABLE_VIRTUAL_TERMINAL_PROCESSING: u32 = 0x0004;
 
 // NOTE: Only modified during the initialization (terma_init).
@@ -131,15 +133,19 @@ pub fn terma_init() {
         let handle = GetStdHandle(STD_INPUT_HANDLE);
         if handle != std::ptr::null() {
             let mut input_mode = 0;
-            input_mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
             input_mode |= ENABLE_PROCESSED_INPUT;
+            input_mode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
+            // input_mode |= ENABLE_ECHO_INPUT;
+            // input_mode |= ENABLE_LINE_INPUT;
             SetConsoleMode(handle, input_mode);
         }
 
         let handle = GetStdHandle(STD_OUTPUT_HANDLE);
         if handle != std::ptr::null() {
             let mut output_mode = 0;
-            output_mode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
+            output_mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+            output_mode |= ENABLE_WRAP_AT_EOL_OUTPUT;
+            output_mode |= ENABLE_PROCESSED_OUTPUT;
             SetConsoleMode(handle, output_mode);
         }
 
@@ -163,9 +169,63 @@ unsafe fn fallback_read_key() -> KeyCode {
     return KeyCode::Char(char::from_u32_unchecked(buffer[0] as u32));
 }
 
+pub fn read_key() -> KeyCode {
+    unsafe {
+        let handle = GetStdHandle(STD_INPUT_HANDLE);
+        if handle == std::ptr::null() {
+            return KeyCode::Error
+        }
+
+        let _ = FlushConsoleInputBuffer(handle);
+
+        let keycode = loop {
+            let mut buffer = [0u8; 8];
+            let mut bytes_read = 0u32;
+            let _ = ReadConsoleA(handle, buffer.as_mut_ptr() as *mut void, 8, &mut bytes_read as *mut u32, std::ptr::null());
+
+            if buffer[0] == 0x1b && buffer[1] == b'[' {
+                let next = if buffer[2] == 0x31 && buffer[3] == 0x3b {
+                    5
+                } else {
+                    2
+                };
+
+                match buffer[next] {
+                    65 => break KeyCode::ArrowUp,
+                    66 => break KeyCode::ArrowDown,
+                    67 => break KeyCode::ArrowRight,
+                    68 => break KeyCode::ArrowLeft,
+                    _ => {}
+                }
+            }
+
+            // print!("{:?}", String::from_utf8_lossy(&buffer));
+            let data = buffer[0] as u8;
+            match data {
+                b'0'..=b'9' => break KeyCode::Char(char::from_u32_unchecked(data as u32)),
+                b'a'..=b'z' => break KeyCode::Char(char::from_u32_unchecked(data as u32)),
+                b'A'..=b'Z' => break KeyCode::Char(char::from_u32_unchecked(data as u32)),
+                10  => break KeyCode::Enter,
+                32  => break KeyCode::Space,
+                127 => break KeyCode::Backspace,
+                _   => {}
+                // _   => break KeyCode::Other(u64::from_ne_bytes(buffer)),
+            }
+        };
+
+        return keycode;
+        // let mut buffer = [0u8; 8];
+        // let mut bytes_read = 0u32;
+        // let _ = ReadConsoleA(handle, buffer.as_mut_ptr() as *mut void, buffer.len() as u32, &mut bytes_read as *mut u32, std::ptr::null());
+        // println!("{buffer:?}");
+        // return KeyCode::Other(0);
+    }
+
+}
+
 // NOTE: Works very poorly on mingw and git bash terminals.
 // TODO(?): ANSI version of read_key for windows?
-pub fn read_key() -> KeyCode {
+pub fn read_key_legacy() -> KeyCode {
     unsafe {
         let handle = GetStdHandle(STD_INPUT_HANDLE);
         if handle == std::ptr::null() {
@@ -222,15 +282,15 @@ pub fn read_key() -> KeyCode {
     }
 }
 
-pub fn print_str(string: &str) -> usize {
+pub fn print_str(string: &str) -> isize {
     unsafe {
         let handle = GetStdHandle(STD_OUTPUT_HANDLE);
         if handle == std::ptr::null() {
-            return 0;
+            return -1;
         }
 
         let mut bytes_written: u32 = 0;
-        WriteConsoleA(
+        let result = WriteConsoleA(
             handle,
             string.as_ptr() as *const void,
             string.len() as u32,
@@ -238,7 +298,35 @@ pub fn print_str(string: &str) -> usize {
             std::ptr::null()
         );
 
-        return bytes_written as usize;
+        if result == 0 {
+            return -1;
+        }
+
+        return bytes_written as isize;
+    }
+}
+
+pub fn read_buf(buffer: &mut [u8]) -> isize {
+    unsafe {
+        let handle = GetStdHandle(STD_INPUT_HANDLE);
+        if handle == std::ptr::null() {
+            return -1;
+        }
+
+        let mut bytes_read = 0u32;
+        let result = ReadConsoleA(
+            handle,
+            buffer.as_mut_ptr() as *mut void,
+            buffer.len() as u32,
+            &mut bytes_read as *mut u32,
+            std::ptr::null()
+        );
+
+        if result == 0 {
+            return -1;
+        }
+
+        return bytes_read as isize;
     }
 }
 

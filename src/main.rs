@@ -56,8 +56,14 @@ fn console_test2() {
 
 fn console_test3() {
     loop {
-        println!("{:?}", read_key());
-        println!("{:?}", cursor_get());
+        let key = read_key();
+        println!("{key:?}");
+        // let pos = cursor_get();
+        // println!("{pos:?}");
+        // use std::io::Read;
+        // let mut stdin = std::io::stdin();
+        // let mut buffer = Vec::new();
+        // let _ = stdin.read(&mut buffer);
     }
 }
 
@@ -66,7 +72,7 @@ fn console_test4() { }
 fn main() {
     terma_init();
 
-    console_test1();
+    // console_test1();
     // console_test2();
-    // console_test3();
+    console_test3();
 }
