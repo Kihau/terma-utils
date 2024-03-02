@@ -1,4 +1,5 @@
-use crate::{print_str, read_buf, KeyCode, Pos};
+use std::io::Write;
+use crate::{print_str, print_buf, read_buf, KeyCode, Pos};
 
 pub(crate) fn read_key() -> KeyCode {
     let keycode = loop {
@@ -38,10 +39,14 @@ pub(crate) fn read_key() -> KeyCode {
     return keycode;
 }
 
-pub(crate) fn cursor_set(x: i16, y: i16) {
-    //                    VVVVVVVV Can be changed to something like a 64 byte buffer to avoid useless allocations.
-    let ansi_cursor_set = format!("\x1b[{y};{x}H");
-    print_str(&ansi_cursor_set);
+pub(crate) fn cursor_set(x: u16, y: u16) {
+    // ANSI console cursor position is 0 and NOT 1 indexed.
+    let ansi_x = x.saturating_add(1);
+    let ansi_y = y.saturating_add(1);
+
+    let mut buffer = [0u8; 16];
+    write!(&mut buffer[..], "\x1b[{ansi_y};{ansi_x}H").unwrap();
+    print_buf(&buffer, buffer.len());
 }
 
 pub(crate) fn parse_pos(buffer: &[u8]) -> Pos {
@@ -52,20 +57,6 @@ pub(crate) fn parse_pos(buffer: &[u8]) -> Pos {
 
         if byte == 0 || byte == b'[' {
             break;
-        }
-    }
-
-    let mut x = 0u16;
-    while i < buffer.len() {
-        let byte = buffer[i];
-        i += 1;
-
-        match byte {
-            b'0'..=b'9' => {
-                x *= 10;
-                x += (byte - b'0') as u16;
-            }
-            _ => break,
         }
     }
 
@@ -83,6 +74,20 @@ pub(crate) fn parse_pos(buffer: &[u8]) -> Pos {
         }
     }
 
+    let mut x = 0u16;
+    while i < buffer.len() {
+        let byte = buffer[i];
+        i += 1;
+
+        match byte {
+            b'0'..=b'9' => {
+                x *= 10;
+                x += (byte - b'0') as u16;
+            }
+            _ => break,
+        }
+    }
+
     return Pos { x, y }
 }
 
@@ -93,7 +98,10 @@ pub(crate) fn cursor_get() -> Pos {
     let mut buffer = [0u8; 16];
     let _ = read_buf(&mut buffer);
 
-    let pos = parse_pos(&buffer);
+    let mut pos = parse_pos(&buffer);
+    pos.x = pos.x.saturating_sub(1);
+    pos.y = pos.y.saturating_sub(1);
+
     return pos;
 }
 
@@ -111,11 +119,13 @@ pub(crate) fn color_reset() {
 }
 
 pub(crate) fn color_bg(red: u8, green: u8, blue: u8) {
-    let ansi_color_bg = format!("\x1b[48;2;{red};{green};{blue}m");
-    print_str(ansi_color_bg.as_str());
+    let mut buffer = [0u8; 32];
+    write!(&mut buffer[..], "\x1b[48;2;{red};{green};{blue}m").unwrap();
+    print_buf(&buffer, buffer.len());
 }
 
 pub(crate) fn color_fg(red: u8, green: u8, blue: u8) {
-    let ansi_color_fg = format!("\x1b[38;2;{red};{green};{blue}m");
-    print_str(ansi_color_fg.as_str());
+    let mut buffer = [0u8; 32];
+    write!(&mut buffer[..], "\x1b[38;2;{red};{green};{blue}m").unwrap();
+    print_buf(&buffer, buffer.len());
 }

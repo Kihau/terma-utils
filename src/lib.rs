@@ -1,5 +1,6 @@
 #[derive(Debug)]
-pub struct Pos { pub x: u16, 
+pub struct Pos { 
+    pub x: u16, 
     pub y: u16,
 }
 
@@ -29,8 +30,7 @@ mod ansi;
 
 // TODO: 
 //   - try_read_key() - Non-blocking read_key
-//   - console_get()  - Get info about console
-//   - buffer_get()   - Get info buffer size
+//   - console_get()  - Get info about console (?)
 //   - clear_line()   - Clear line at current cursor position
 //   - clear_end()    - Clear console at current cursor position till end 
 
@@ -38,23 +38,23 @@ mod ansi;
 pub use unix::{
     terma_init,
     print_str,
-
-    // TODO: Maybe those two should be only public for the crate and outside of the library?
+    print_buf,
     read_buf,
     read_key,
-
     console_clear,
     cursor_get,
     cursor_set,
     color_bg,
     color_fg,
     color_reset,
+    buffer_size,
 };
 
 #[cfg(target_os = "windows")]
 pub use windows::{
     terma_init,
     print_str,
+    print_buf,
     read_buf,
     read_key,
     console_clear,
@@ -63,4 +63,5 @@ pub use windows::{
     color_bg,
     color_fg,
     color_reset,
+    buffer_size,
 };

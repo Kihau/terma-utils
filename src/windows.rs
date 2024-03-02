@@ -252,6 +252,25 @@ pub fn print_str(string: &str) -> isize {
     }
 }
 
+pub fn print_buf(buffer: &[u8], buffer_size: usize) -> isize {
+    unsafe {
+        let mut bytes_written: u32 = 0;
+        let result = WriteConsoleA(
+            stdout,
+            buffer.as_ptr() as *const void,
+            buffer_size as u32,
+            &mut bytes_written as *mut u32,
+            std::ptr::null()
+        );
+
+        if result == 0 {
+            return -1;
+        }
+
+        return bytes_written as isize;
+    }
+}
+
 pub fn read_buf(buffer: &mut [u8]) -> isize {
     unsafe {
         let mut bytes_read = 0u32;
@@ -337,18 +356,18 @@ unsafe fn cursor_get_legacy() -> Pos {
     return pos;
 }
 
-pub fn cursor_set(x: i16, y: i16) {
+pub fn cursor_set(x: u16, y: u16) {
     unsafe {
         if supports_ansi {
             return ansi::cursor_set(x, y);
         } else {
-            return cursor_set_legacy(x, y);
+            return cursor_set_legacy(x as i16, y as i16);
         }
     }
 }
 
 unsafe fn cursor_set_legacy(x: i16, y: i16) {
-    let position = Coord { x: x - 1, y: y - 1 };
+    let position = Coord { x, y };
     SetConsoleCursorPosition(stdout, position);
 }
 
@@ -385,4 +404,31 @@ pub fn color_reset() {
 unsafe fn color_reset_legacy() {
     let color_white = 15;
     SetConsoleTextAttribute(stdout, color_white);
+}
+
+pub fn buffer_size() -> Pos {
+    unsafe {
+        if supports_ansi {
+            let prev = cursor_get();
+
+            cursor_set(u16::MAX, u16::MAX);
+
+            let mut size = cursor_get();
+            size.x = size.x.saturating_add(1);
+            size.y = size.y.saturating_add(1);
+
+            cursor_set(prev.x, prev.y);
+
+            return size;
+        } else {
+            let mut buffer_info = ConsoleBufferInfo::default();
+            let _ = GetConsoleScreenBufferInfo(stdout, &mut buffer_info as *mut ConsoleBufferInfo);
+            let pos = Pos {
+                x: buffer_info.buffer_size.x as u16,
+                y: buffer_info.buffer_size.y as u16,
+            };
+
+            return pos
+        }
+    }
 }

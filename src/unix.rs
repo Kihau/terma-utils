@@ -83,6 +83,18 @@ pub fn print_str(string: &str) -> isize {
     }
 }
 
+pub fn print_buf(buffer: &[u8], buffer_size: usize) -> isize {
+    unsafe {
+        let bytes_written = write(
+            STDOUT,
+            buffer.as_ptr() as *const void, 
+            buffer_size
+        );
+
+        return bytes_written as isize;
+    }
+}
+
 pub fn read_buf(buffer: &mut [u8]) -> isize {
     unsafe {
         let bytes_read = read(
@@ -114,7 +126,7 @@ pub fn read_key() -> KeyCode {
     }
 }
 
-pub fn cursor_set(x: i16, y: i16) {
+pub fn cursor_set(x: u16, y: u16) {
     ansi::cursor_set(x, y);
 }
 
@@ -151,4 +163,18 @@ pub fn color_bg(red: u8, green: u8, blue: u8) {
 
 pub fn color_fg(red: u8, green: u8, blue: u8) {
     ansi::color_fg(red, green, blue);
+}
+
+pub fn buffer_size() -> Pos {
+    let prev = cursor_get();
+
+    cursor_set(u16::MAX, u16::MAX);
+
+    let mut size = cursor_get();
+    size.x = size.x.saturating_add(1);
+    size.y = size.y.saturating_add(1);
+
+    cursor_set(prev.x, prev.y);
+
+    return size;
 }

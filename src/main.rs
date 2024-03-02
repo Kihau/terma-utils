@@ -9,27 +9,30 @@ use terma_utils::{
     color_fg,
     color_bg,
     color_reset,
+    buffer_size,
 };
 
 fn console_test1() {
     loop {
+        let size = buffer_size();
+
         let value = read_key();
         color_bg(255, 0, 0);
         console_clear();
-        cursor_set(30, 120);
+        cursor_set(size.x / 2, size.y / 2);
         println!("{value:?}");
 
         let value = read_key();
         color_reset();
         console_clear();
-        cursor_set(30, 120);
+        cursor_set(size.x / 2, size.y / 2);
         println!("{value:?}");
     }
 }
 
 fn console_test2() {
-    let mut x = 10i16;
-    let mut y = 10i16;
+    let mut x = 10u16;
+    let mut y = 10u16;
 
     //console_clear();
     loop {
@@ -66,7 +69,14 @@ fn console_test2() {
 fn console_test3() {
     loop {
         let key = read_key();
-        println!("{key:?}");
+        // println!("{key:?}");
+        // let size = buffer_size();
+        // println!("{size:?}");
+
+        let pos = cursor_get();
+        println!("{pos:?}");
+        cursor_set(pos.x, pos.y);
+
         // let pos = cursor_get();
         // println!("{pos:?}");
         // use std::io::Read;
@@ -81,7 +91,7 @@ fn console_test4() { }
 fn main() {
     terma_init();
 
-    // console_test1();
-    console_test2();
+    console_test1();
+    // console_test2();
     // console_test3();
 }
