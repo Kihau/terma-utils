@@ -1,11 +1,12 @@
 #[derive(Debug)]
-pub struct Pos {
-    pub x: u16, 
+pub struct Pos { pub x: u16, 
     pub y: u16,
 }
 
 #[derive(Debug)]
 pub enum KeyCode {
+    // TODO(?): 
+    //     Add modifiers (Ctrl, Alt) + console events (buffer resize, mouse click)?
     Char(char),
     Enter,
     Backspace,
@@ -24,8 +25,14 @@ mod unix;
 #[cfg(target_os = "windows")]
 mod windows;
 
+mod ansi;
+
 // TODO: 
 //   - try_read_key() - Non-blocking read_key
+//   - console_get()  - Get info about console
+//   - buffer_get()   - Get info buffer size
+//   - clear_line()   - Clear line at current cursor position
+//   - clear_end()    - Clear console at current cursor position till end 
 
 #[cfg(all(unix))]
 pub use unix::{

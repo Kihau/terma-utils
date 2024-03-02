@@ -1,5 +1,6 @@
 use super::KeyCode;
 use super::Pos;
+use super::ansi;
 
 #[allow(non_camel_case_types)]
 type void = std::ffi::c_void;
@@ -173,60 +174,18 @@ unsafe fn fallback_read_key() -> KeyCode {
 
 // NOTE: Works very poorly on mingw and git bash terminals.
 pub fn read_key() -> KeyCode {
-    unsafe {
+    unsafe { 
+        let _ = FlushConsoleInputBuffer(stdin); 
+
         if supports_ansi {
-            return read_key_ansi();
+            return ansi::read_key();
         } else {
             return read_key_legacy();
         }
     }
 }
 
-unsafe fn read_key_ansi() -> KeyCode {
-    let _ = FlushConsoleInputBuffer(stdin);
-
-    let keycode = loop {
-        let mut buffer = [0u8; 8];
-        let mut bytes_read = 0u32;
-        let _ = ReadConsoleA(stdin, buffer.as_mut_ptr() as *mut void, 8, &mut bytes_read as *mut u32, std::ptr::null());
-
-        if buffer[0] == 0x1b && buffer[1] == b'[' {
-            let next = if buffer[2] == 0x31 && buffer[3] == 0x3b {
-                5
-            } else {
-                2
-            };
-
-            match buffer[next] {
-                65 => break KeyCode::ArrowUp,
-                66 => break KeyCode::ArrowDown,
-                67 => break KeyCode::ArrowRight,
-                68 => break KeyCode::ArrowLeft,
-                _ => {}
-            }
-        }
-
-        // print!("{:?}", String::from_utf8_lossy(&buffer));
-        let data = buffer[0] as u8;
-        match data {
-            b'0'..=b'9' => break KeyCode::Char(char::from_u32_unchecked(data as u32)),
-            b'a'..=b'z' => break KeyCode::Char(char::from_u32_unchecked(data as u32)),
-            b'A'..=b'Z' => break KeyCode::Char(char::from_u32_unchecked(data as u32)),
-            b'\n' => break KeyCode::Enter,
-            b'\r' => break KeyCode::Enter,
-            b' '  => break KeyCode::Space,
-            127 => break KeyCode::Backspace,
-            _   => {}
-            // _   => break KeyCode::Other(u64::from_ne_bytes(buffer)),
-        }
-    };
-
-    return keycode;
-}
-
 unsafe fn read_key_legacy() -> KeyCode {
-    let _ = FlushConsoleInputBuffer(stdin);
-
     let mut entries_read = 0u32;
     let mut input = InputRecord::default();
     let key = loop {
@@ -315,133 +274,88 @@ pub fn read_buf(buffer: &mut [u8]) -> isize {
 pub fn console_clear() {
     unsafe {
         if supports_ansi {
-            let ansi_move = "\x1b[1;1H";
-            let _ = print_str(ansi_move);
-
-            let ansi_clear = "\x1b[0J";
-            let _ = print_str(ansi_clear);
+            ansi::console_clear();
         } else {
-            let mut buffer_info = ConsoleBufferInfo::default();
-            let result = GetConsoleScreenBufferInfo(stdout, &mut buffer_info as *mut ConsoleBufferInfo);
-            if result == 0 {
-                return;
-            }
-
-            let rect = SmallRect {
-                left:   0,
-                top:    0,
-                right:  buffer_info.buffer_size.x,
-                bottom: buffer_info.buffer_size.y,
-            };
-
-            let target = Coord {
-                x: 0,
-                y: 0 - buffer_info.buffer_size.y
-            };
-
-            let fill = CharInfo {
-                unicode_char: 32,
-                attributes:   buffer_info.attributes,
-            };
-
-            let result = ScrollConsoleScreenBufferW(stdout, &rect as *const SmallRect, std::ptr::null(), target, &fill as *const CharInfo);
-            if result == 0 {
-                return;
-            }
-
-            buffer_info.cursor_position.x = 0;
-            buffer_info.cursor_position.y = 0;
-            SetConsoleCursorPosition(stdout, buffer_info.cursor_position);
+            console_clear_legacy();
         }
     }
 }
 
-// TODO: Move this.
-fn parse_pos(buffer: &[u8]) -> Pos {
-    let mut i = 0;
-    while i < buffer.len() {
-        let byte = buffer[i];
-        i += 1;
-
-        if byte == 0 || byte == b'[' {
-            break;
-        }
+unsafe fn console_clear_legacy() {
+    let mut buffer_info = ConsoleBufferInfo::default();
+    let result = GetConsoleScreenBufferInfo(stdout, &mut buffer_info as *mut ConsoleBufferInfo);
+    if result == 0 {
+        return;
     }
 
-    let mut x = 0u16;
-    while i < buffer.len() {
-        let byte = buffer[i];
-        i += 1;
+    let rect = SmallRect {
+        left:   0,
+        top:    0,
+        right:  buffer_info.buffer_size.x,
+        bottom: buffer_info.buffer_size.y,
+    };
 
-        match byte {
-            b'0'..=b'9' => {
-                x *= 10;
-                x += (byte - b'0') as u16;
-            }
-            _ => break,
-        }
+    let target = Coord {
+        x: 0,
+        y: 0 - buffer_info.buffer_size.y
+    };
+
+    let fill = CharInfo {
+        unicode_char: 32,
+        attributes:   buffer_info.attributes,
+    };
+
+    let result = ScrollConsoleScreenBufferW(stdout, &rect as *const SmallRect, std::ptr::null(), target, &fill as *const CharInfo);
+    if result == 0 {
+        return;
     }
 
-    let mut y = 0u16;
-    while i < buffer.len() {
-        let byte = buffer[i];
-        i += 1;
-
-        match byte {
-            b'0'..=b'9' => {
-                y *= 10;
-                y += (byte - b'0') as u16;
-            }
-            _ => break,
-        }
-    }
-
-    return Pos { x, y }
+    buffer_info.cursor_position.x = 0;
+    buffer_info.cursor_position.y = 0;
+    SetConsoleCursorPosition(stdout, buffer_info.cursor_position);
 }
 
 pub fn cursor_get() -> Pos {
     unsafe {
         if supports_ansi {
-            let ansi_cursor_get = "\x1b[6n";
-            print_str(ansi_cursor_get);
-
-            let mut buffer = [0u8; 64];
-            let mut bytes_read = 0u32;
-            ReadConsoleA(stdin, buffer.as_mut_ptr() as *mut void, 64, &mut bytes_read as *mut u32, std::ptr::null());
-
-            let pos = parse_pos(&buffer);
-            return pos;
+            return ansi::cursor_get();
         } else {
-            let mut buffer_info = ConsoleBufferInfo::default();
-            let _ = GetConsoleScreenBufferInfo(stdout, &mut buffer_info as *mut ConsoleBufferInfo);
-
-            let pos = Pos {
-                x: buffer_info.cursor_position.x as u16,
-                y: buffer_info.cursor_position.y as u16,
-            };
-
-            return pos;
+            return cursor_get_legacy();
         }
     }
+}
+
+unsafe fn cursor_get_legacy() -> Pos {
+    let mut buffer_info = ConsoleBufferInfo::default();
+    let _ = GetConsoleScreenBufferInfo(stdout, &mut buffer_info as *mut ConsoleBufferInfo);
+
+    let pos = Pos {
+        x: buffer_info.cursor_position.x as u16,
+        y: buffer_info.cursor_position.y as u16,
+    };
+
+    return pos;
 }
 
 pub fn cursor_set(x: i16, y: i16) {
     unsafe {
         if supports_ansi {
-            let ansi_cursor_set = format!("\x1b[{y};{x}H");
-            let _ = print_str(&ansi_cursor_set);
+            return ansi::cursor_set(x, y);
         } else {
-            let position = Coord { x: x - 1, y: y - 1 };
-            SetConsoleCursorPosition(stdout, position);
+            return cursor_set_legacy(x, y);
         }
     }
+}
+
+unsafe fn cursor_set_legacy(x: i16, y: i16) {
+    let position = Coord { x: x - 1, y: y - 1 };
+    SetConsoleCursorPosition(stdout, position);
 }
 
 pub fn color_bg(red: u8, green: u8, blue: u8) {
     unsafe {
         if supports_ansi {
-            let ansi_color_bg = format!("\x1b[48;2;{red};{green};{blue}m");
-            print_str(&ansi_color_bg);
+            ansi::color_bg(red, green, blue);
         } else {
             // Not supported. Fallback to legacy windows console colors?
         }
@@ -451,8 +365,7 @@ pub fn color_bg(red: u8, green: u8, blue: u8) {
 pub fn color_fg(red: u8, green: u8, blue: u8) {
     unsafe {
         if supports_ansi {
-            let ansi_color_fg = format!("\x1b[38;2;{red};{green};{blue}m");
-            print_str(&ansi_color_fg);
+            ansi::color_fg(red, green, blue);
         } else {
             // Not supported. Fallback to legacy windows console colors?
         }
@@ -462,11 +375,14 @@ pub fn color_fg(red: u8, green: u8, blue: u8) {
 pub fn color_reset() {
     unsafe {
         if supports_ansi {
-            let ansi_reset = "\x1b[0m";
-            print_str(ansi_reset);
+            ansi::color_reset();
         } else {
-            let color_white = 15;
-            SetConsoleTextAttribute(stdout, color_white);
+            color_reset_legacy();
         }
     }
+}
+
+unsafe fn color_reset_legacy() {
+    let color_white = 15;
+    SetConsoleTextAttribute(stdout, color_white);
 }

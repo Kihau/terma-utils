@@ -1,5 +1,6 @@
-use super::KeyCode;
-use super::Pos;
+use crate::KeyCode;
+use crate::Pos;
+use crate::ansi;
 
 const STDIN:  i32 = 0;
 const STDOUT: i32 = 0;
@@ -106,39 +107,7 @@ pub fn read_key() -> KeyCode {
 
         flush_stdin();
 
-        let keycode = loop {
-            let mut buffer = [0u8; 8];
-            let _ = read(STDIN, buffer.as_mut_ptr() as *mut void, 8);
-
-            if buffer[0] == 0x1b && buffer[1] == b'[' {
-                let next = if buffer[2] == 0x31 && buffer[3] == 0x3b {
-                    5
-                } else {
-                    2
-                };
-
-                match buffer[next] {
-                    65 => break KeyCode::ArrowUp,
-                    66 => break KeyCode::ArrowDown,
-                    67 => break KeyCode::ArrowRight,
-                    68 => break KeyCode::ArrowLeft,
-                    _ => {}
-                }
-            }
-
-            // print!("{:?}", String::from_utf8_lossy(&buffer));
-            let data = buffer[0] as u8;
-            match data {
-                b'0'..=b'9' => break KeyCode::Char(char::from_u32_unchecked(data as u32)),
-                b'a'..=b'z' => break KeyCode::Char(char::from_u32_unchecked(data as u32)),
-                b'A'..=b'Z' => break KeyCode::Char(char::from_u32_unchecked(data as u32)),
-                10  => break KeyCode::Enter,
-                32  => break KeyCode::Space,
-                127 => break KeyCode::Backspace,
-                _   => {}
-                // _   => break KeyCode::Other(u64::from_ne_bytes(buffer)),
-            }
-        };
+        let keycode = ansi::read_key();
 
         tcsetattr(STDIN, TCSANOW, &old_settings as *const Termios);
         return keycode;
@@ -146,53 +115,7 @@ pub fn read_key() -> KeyCode {
 }
 
 pub fn cursor_set(x: i16, y: i16) {
-    unsafe {
-        //                    VVVVVVVV Can be changed to something like a 64 byte buffer to avoid useless allocations.
-        let ansi_cursor_set = format!("\x1b[{y};{x}H");
-        write(STDOUT, ansi_cursor_set.as_str().as_ptr() as *const void, ansi_cursor_set.len());
-    }
-}
-
-fn parse_pos(buffer: &[u8]) -> Pos {
-    let mut i = 0;
-    while i < buffer.len() {
-        let byte = buffer[i];
-        i += 1;
-
-        if byte == 0 || byte == b'[' {
-            break;
-        }
-    }
-
-    let mut x = 0u16;
-    while i < buffer.len() {
-        let byte = buffer[i];
-        i += 1;
-
-        match byte {
-            b'0'..=b'9' => {
-                x *= 10;
-                x += (byte - b'0') as u16;
-            }
-            _ => break,
-        }
-    }
-
-    let mut y = 0u16;
-    while i < buffer.len() {
-        let byte = buffer[i];
-        i += 1;
-
-        match byte {
-            b'0'..=b'9' => {
-                y *= 10;
-                y += (byte - b'0') as u16;
-            }
-            _ => break,
-        }
-    }
-
-    return Pos { x, y }
+    ansi::cursor_set(x, y);
 }
 
 pub fn cursor_get() -> Pos {
@@ -207,48 +130,25 @@ pub fn cursor_get() -> Pos {
 
         flush_stdin();
 
-        let ansi_cursor_get = "\x1b[6n";
-        print_str(ansi_cursor_get);
-
-        let mut buffer = [0u8; 16];
-        let _ = read(STDIN, buffer.as_mut_ptr() as *mut void, 16);
-
-        let pos = parse_pos(&buffer);
+        let pos = ansi::cursor_get();
 
         tcsetattr(STDIN, TCSANOW, &old_settings as *const Termios);
-
         return pos;
     }
 }
 
 pub fn console_clear() {
-    unsafe {
-        let ansi_move = "\x1b[1;1H";
-        print_str(ansi_move);
-
-        let ansi_clear = "\x1b[0J";
-        print_str(ansi_clear);
-    }
+    ansi::console_clear();
 }
 
 pub fn color_reset() {
-    unsafe {
-        let ansi_reset = "\x1b[0m";
-        print_str(ansi_reset);
-    }
+    ansi::color_reset();
 }
 
 pub fn color_bg(red: u8, green: u8, blue: u8) {
-    unsafe {
-        let ansi_color_bg = format!("\x1b[48;2;{red};{green};{blue}m");
-        print_str(ansi_color_bg.as_str());
-    }
+    ansi::color_bg(red, green, blue);
 }
 
 pub fn color_fg(red: u8, green: u8, blue: u8) {
-    unsafe {
-        //                  VVVVVVV Can be changed to something like a 64 byte buffer to avoid useless allocations.
-        let ansi_color_fg = format!("\x1b[38;2;{red};{green};{blue}m");
-        print_str(ansi_color_fg.as_str());
-    }
+    ansi::color_fg(red, green, blue);
 }
