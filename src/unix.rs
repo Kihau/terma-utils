@@ -148,7 +148,7 @@ pub fn read_key() -> KeyCode {
 pub fn cursor_set(x: i16, y: i16) {
     unsafe {
         //                    VVVVVVVV Can be changed to something like a 64 byte buffer to avoid useless allocations.
-        let ansi_cursor_set = format!("\x1b[{x};{y}H");
+        let ansi_cursor_set = format!("\x1b[{y};{x}H");
         write(STDOUT, ansi_cursor_set.as_str().as_ptr() as *const void, ansi_cursor_set.len());
     }
 }

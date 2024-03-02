@@ -30,9 +30,11 @@ const ENABLE_VIRTUAL_TERMINAL_PROCESSING: u32 = 0x0004;
 // NOTE: Only modified during the initialization (terma_init).
 //       The initialization should happen before any thread is spawned.
 static mut supports_ansi: bool = false;
+static mut stdin:  *const void = std::ptr::null();
+static mut stdout: *const void = std::ptr::null();
 
 #[repr(C)]
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, Debug)]
 struct Coord {
     x: i16,  // SHORT X;
     y: i16,  // SHORT Y;
@@ -121,7 +123,6 @@ extern "system" {
     fn ReadConsoleA(handle: *const void, buffer: *mut void, buffer_size: u32, bytes_read: *mut u32, input_control: *const u32) -> i32;
     fn WriteConsoleW(handle: *const void, buffer: *const void, buffer_size: u32, bytes_written: *mut u32, reserved: *const void) -> i32;
     fn WriteConsoleA(handle: *const void, buffer: *const void, buffer_size: u32, bytes_written: *mut u32, reserved: *const void) -> i32;
-
     fn GetConsoleScreenBufferInfo(handle: *const void, buffer_info: *mut ConsoleBufferInfo) -> i32;
     fn ScrollConsoleScreenBufferW(handle: *const void, scroll: *const SmallRect, clip: *const SmallRect, destination: Coord, fill: *const CharInfo) -> i32;
     fn SetConsoleCursorPosition(handle: *const void, cursor_position: Coord) -> i32;
@@ -130,25 +131,6 @@ extern "system" {
 
 pub fn terma_init() {
     unsafe {
-        let handle = GetStdHandle(STD_INPUT_HANDLE);
-        if handle != std::ptr::null() {
-            let mut input_mode = 0;
-            input_mode |= ENABLE_PROCESSED_INPUT;
-            input_mode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
-            // input_mode |= ENABLE_ECHO_INPUT;
-            // input_mode |= ENABLE_LINE_INPUT;
-            SetConsoleMode(handle, input_mode);
-        }
-
-        let handle = GetStdHandle(STD_OUTPUT_HANDLE);
-        if handle != std::ptr::null() {
-            let mut output_mode = 0;
-            output_mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-            output_mode |= ENABLE_WRAP_AT_EOL_OUTPUT;
-            output_mode |= ENABLE_PROCESSED_OUTPUT;
-            SetConsoleMode(handle, output_mode);
-        }
-
         // TODO: perform checks here:
         // print ansi query code
         // check if query returned something
@@ -157,7 +139,27 @@ pub fn terma_init() {
         //
         // no ansi -> WriteConsole buffers output(?), set correct console modes for printing
         // ansi -> enable virtual processing
-        supports_ansi = true;
+        supports_ansi = false;
+
+        // Return error on null?
+        stdin = GetStdHandle(STD_INPUT_HANDLE);
+        if stdin != std::ptr::null() && supports_ansi {
+            let mut input_mode = 0;
+            input_mode |= ENABLE_PROCESSED_INPUT;
+            input_mode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
+            // input_mode |= ENABLE_ECHO_INPUT;
+            // input_mode |= ENABLE_LINE_INPUT;
+            SetConsoleMode(stdin, input_mode);
+        }
+
+        stdout = GetStdHandle(STD_OUTPUT_HANDLE);
+        if stdout != std::ptr::null() && supports_ansi {
+            let mut output_mode = 0;
+            output_mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+            output_mode |= ENABLE_WRAP_AT_EOL_OUTPUT;
+            output_mode |= ENABLE_PROCESSED_OUTPUT;
+            SetConsoleMode(stdout, output_mode);
+        }
     }
 }
 
@@ -169,129 +171,114 @@ unsafe fn fallback_read_key() -> KeyCode {
     return KeyCode::Char(char::from_u32_unchecked(buffer[0] as u32));
 }
 
+// NOTE: Works very poorly on mingw and git bash terminals.
 pub fn read_key() -> KeyCode {
     unsafe {
-        let handle = GetStdHandle(STD_INPUT_HANDLE);
-        if handle == std::ptr::null() {
-            return KeyCode::Error
+        if supports_ansi {
+            return read_key_ansi();
+        } else {
+            return read_key_legacy();
+        }
+    }
+}
+
+unsafe fn read_key_ansi() -> KeyCode {
+    let _ = FlushConsoleInputBuffer(stdin);
+
+    let keycode = loop {
+        let mut buffer = [0u8; 8];
+        let mut bytes_read = 0u32;
+        let _ = ReadConsoleA(stdin, buffer.as_mut_ptr() as *mut void, 8, &mut bytes_read as *mut u32, std::ptr::null());
+
+        if buffer[0] == 0x1b && buffer[1] == b'[' {
+            let next = if buffer[2] == 0x31 && buffer[3] == 0x3b {
+                5
+            } else {
+                2
+            };
+
+            match buffer[next] {
+                65 => break KeyCode::ArrowUp,
+                66 => break KeyCode::ArrowDown,
+                67 => break KeyCode::ArrowRight,
+                68 => break KeyCode::ArrowLeft,
+                _ => {}
+            }
         }
 
-        let _ = FlushConsoleInputBuffer(handle);
+        // print!("{:?}", String::from_utf8_lossy(&buffer));
+        let data = buffer[0] as u8;
+        match data {
+            b'0'..=b'9' => break KeyCode::Char(char::from_u32_unchecked(data as u32)),
+            b'a'..=b'z' => break KeyCode::Char(char::from_u32_unchecked(data as u32)),
+            b'A'..=b'Z' => break KeyCode::Char(char::from_u32_unchecked(data as u32)),
+            b'\n' => break KeyCode::Enter,
+            b'\r' => break KeyCode::Enter,
+            b' '  => break KeyCode::Space,
+            127 => break KeyCode::Backspace,
+            _   => {}
+            // _   => break KeyCode::Other(u64::from_ne_bytes(buffer)),
+        }
+    };
 
-        let keycode = loop {
-            let mut buffer = [0u8; 8];
-            let mut bytes_read = 0u32;
-            let _ = ReadConsoleA(handle, buffer.as_mut_ptr() as *mut void, 8, &mut bytes_read as *mut u32, std::ptr::null());
+    return keycode;
+}
 
-            if buffer[0] == 0x1b && buffer[1] == b'[' {
-                let next = if buffer[2] == 0x31 && buffer[3] == 0x3b {
-                    5
-                } else {
-                    2
-                };
+unsafe fn read_key_legacy() -> KeyCode {
+    let _ = FlushConsoleInputBuffer(stdin);
 
-                match buffer[next] {
-                    65 => break KeyCode::ArrowUp,
-                    66 => break KeyCode::ArrowDown,
-                    67 => break KeyCode::ArrowRight,
-                    68 => break KeyCode::ArrowLeft,
-                    _ => {}
-                }
-            }
+    let mut entries_read = 0u32;
+    let mut input = InputRecord::default();
+    let key = loop {
+        let result = ReadConsoleInputW(stdin, &mut input as *mut InputRecord, 1, &mut entries_read as *mut u32);
 
-            // print!("{:?}", String::from_utf8_lossy(&buffer));
-            let data = buffer[0] as u8;
-            match data {
+        // Reading the console input failed.
+        if result == 0 || entries_read == 0 {
+            return fallback_read_key();
+        }
+
+        if input.event_type != 1 {
+            continue;
+        }
+
+        let key = input.event.key;
+        if key.key_down == 0 {
+            continue;
+        }
+
+        let key = input.event.key;
+
+        if key.character_data != 0 {
+            let data = key.character_data;
+            match key.character_data as u8 {
                 b'0'..=b'9' => break KeyCode::Char(char::from_u32_unchecked(data as u32)),
                 b'a'..=b'z' => break KeyCode::Char(char::from_u32_unchecked(data as u32)),
                 b'A'..=b'Z' => break KeyCode::Char(char::from_u32_unchecked(data as u32)),
-                10  => break KeyCode::Enter,
-                32  => break KeyCode::Space,
-                127 => break KeyCode::Backspace,
-                _   => {}
-                // _   => break KeyCode::Other(u64::from_ne_bytes(buffer)),
+                8  => break KeyCode::Backspace,
+                13 => break KeyCode::Enter,
+                32 => break KeyCode::Space,
+                _  => {}
+                // _  => break KeyCode::Other(data as u64),
             }
-        };
-
-        return keycode;
-        // let mut buffer = [0u8; 8];
-        // let mut bytes_read = 0u32;
-        // let _ = ReadConsoleA(handle, buffer.as_mut_ptr() as *mut void, buffer.len() as u32, &mut bytes_read as *mut u32, std::ptr::null());
-        // println!("{buffer:?}");
-        // return KeyCode::Other(0);
-    }
-
-}
-
-// NOTE: Works very poorly on mingw and git bash terminals.
-// TODO(?): ANSI version of read_key for windows?
-pub fn read_key_legacy() -> KeyCode {
-    unsafe {
-        let handle = GetStdHandle(STD_INPUT_HANDLE);
-        if handle == std::ptr::null() {
-            return KeyCode::Error
         }
 
-        let _ = FlushConsoleInputBuffer(handle);
+        match key.virtual_keycode {
+            0x25 => break KeyCode::ArrowLeft,
+            0x26 => break KeyCode::ArrowUp,
+            0x27 => break KeyCode::ArrowRight,
+            0x28 => break KeyCode::ArrowDown,
+            _    => continue,
+        }
+    };
 
-        let mut entries_read = 0u32;
-        let mut input = InputRecord::default();
-        let key = loop {
-            let result = ReadConsoleInputW(handle, &mut input as *mut InputRecord, 1, &mut entries_read as *mut u32);
-
-            // Reading the console input failed.
-            if result == 0 || entries_read == 0 {
-                return fallback_read_key();
-            }
-
-            if input.event_type != 1 {
-                continue;
-            }
-
-            let key = input.event.key;
-            if key.key_down == 0 {
-                continue;
-            }
-
-            let key = input.event.key;
-
-            if key.character_data != 0 {
-                let data = key.character_data;
-                match key.character_data as u8 {
-                    b'0'..=b'9' => break KeyCode::Char(char::from_u32_unchecked(data as u32)),
-                    b'a'..=b'z' => break KeyCode::Char(char::from_u32_unchecked(data as u32)),
-                    b'A'..=b'Z' => break KeyCode::Char(char::from_u32_unchecked(data as u32)),
-                    8  => break KeyCode::Backspace,
-                    13 => break KeyCode::Enter,
-                    32 => break KeyCode::Space,
-                    _  => {}
-                    // _  => break KeyCode::Other(data as u64),
-                }
-            }
-
-            match key.virtual_keycode {
-                0x25 => break KeyCode::ArrowLeft,
-                0x26 => break KeyCode::ArrowUp,
-                0x27 => break KeyCode::ArrowRight,
-                0x28 => break KeyCode::ArrowDown,
-                _    => continue,
-            }
-        };
-
-        return key;
-    }
+    return key;
 }
 
 pub fn print_str(string: &str) -> isize {
     unsafe {
-        let handle = GetStdHandle(STD_OUTPUT_HANDLE);
-        if handle == std::ptr::null() {
-            return -1;
-        }
-
         let mut bytes_written: u32 = 0;
         let result = WriteConsoleA(
-            handle,
+            stdout,
             string.as_ptr() as *const void,
             string.len() as u32,
             &mut bytes_written as *mut u32,
@@ -308,14 +295,9 @@ pub fn print_str(string: &str) -> isize {
 
 pub fn read_buf(buffer: &mut [u8]) -> isize {
     unsafe {
-        let handle = GetStdHandle(STD_INPUT_HANDLE);
-        if handle == std::ptr::null() {
-            return -1;
-        }
-
         let mut bytes_read = 0u32;
         let result = ReadConsoleA(
-            handle,
+            stdin,
             buffer.as_mut_ptr() as *mut void,
             buffer.len() as u32,
             &mut bytes_read as *mut u32,
@@ -332,11 +314,6 @@ pub fn read_buf(buffer: &mut [u8]) -> isize {
 
 pub fn console_clear() {
     unsafe {
-        let handle = GetStdHandle(STD_OUTPUT_HANDLE);
-        if handle == std::ptr::null() {
-            return;
-        }
-
         if supports_ansi {
             let ansi_move = "\x1b[1;1H";
             let _ = print_str(ansi_move);
@@ -345,7 +322,7 @@ pub fn console_clear() {
             let _ = print_str(ansi_clear);
         } else {
             let mut buffer_info = ConsoleBufferInfo::default();
-            let result = GetConsoleScreenBufferInfo(handle, &mut buffer_info as *mut ConsoleBufferInfo);
+            let result = GetConsoleScreenBufferInfo(stdout, &mut buffer_info as *mut ConsoleBufferInfo);
             if result == 0 {
                 return;
             }
@@ -367,42 +344,76 @@ pub fn console_clear() {
                 attributes:   buffer_info.attributes,
             };
 
-            let result = ScrollConsoleScreenBufferW(handle, &rect as *const SmallRect, std::ptr::null(), target, &fill as *const CharInfo);
+            let result = ScrollConsoleScreenBufferW(stdout, &rect as *const SmallRect, std::ptr::null(), target, &fill as *const CharInfo);
             if result == 0 {
                 return;
             }
 
             buffer_info.cursor_position.x = 0;
             buffer_info.cursor_position.y = 0;
-            SetConsoleCursorPosition(handle, buffer_info.cursor_position);
+            SetConsoleCursorPosition(stdout, buffer_info.cursor_position);
         }
     }
 }
 
+// TODO: Move this.
+fn parse_pos(buffer: &[u8]) -> Pos {
+    let mut i = 0;
+    while i < buffer.len() {
+        let byte = buffer[i];
+        i += 1;
+
+        if byte == 0 || byte == b'[' {
+            break;
+        }
+    }
+
+    let mut x = 0u16;
+    while i < buffer.len() {
+        let byte = buffer[i];
+        i += 1;
+
+        match byte {
+            b'0'..=b'9' => {
+                x *= 10;
+                x += (byte - b'0') as u16;
+            }
+            _ => break,
+        }
+    }
+
+    let mut y = 0u16;
+    while i < buffer.len() {
+        let byte = buffer[i];
+        i += 1;
+
+        match byte {
+            b'0'..=b'9' => {
+                y *= 10;
+                y += (byte - b'0') as u16;
+            }
+            _ => break,
+        }
+    }
+
+    return Pos { x, y }
+}
+
 pub fn cursor_get() -> Pos {
     unsafe {
-        let handle = GetStdHandle(STD_OUTPUT_HANDLE);
-        if handle == std::ptr::null() {
-            return Pos { x: 0, y: 0 };
-        }
-
         if supports_ansi {
             let ansi_cursor_get = "\x1b[6n";
             print_str(ansi_cursor_get);
 
-            let handle = GetStdHandle(STD_INPUT_HANDLE);
-            if handle == std::ptr::null() {
-                return Pos { x: 0, y: 0 };
-            }
-
             let mut buffer = [0u8; 64];
             let mut bytes_read = 0u32;
-            ReadConsoleA(handle, buffer.as_mut_ptr() as *mut void, 64, &mut bytes_read as *mut u32, std::ptr::null());
-            //println!("{buffer:?}");
-            return Pos { x: 0, y: 0 };
+            ReadConsoleA(stdin, buffer.as_mut_ptr() as *mut void, 64, &mut bytes_read as *mut u32, std::ptr::null());
+
+            let pos = parse_pos(&buffer);
+            return pos;
         } else {
             let mut buffer_info = ConsoleBufferInfo::default();
-            let _ = GetConsoleScreenBufferInfo(handle, &mut buffer_info as *mut ConsoleBufferInfo);
+            let _ = GetConsoleScreenBufferInfo(stdout, &mut buffer_info as *mut ConsoleBufferInfo);
 
             let pos = Pos {
                 x: buffer_info.cursor_position.x as u16,
@@ -417,16 +428,11 @@ pub fn cursor_get() -> Pos {
 pub fn cursor_set(x: i16, y: i16) {
     unsafe {
         if supports_ansi {
-            let ansi_cursor_set = format!("\x1b[{x};{y}H");
+            let ansi_cursor_set = format!("\x1b[{y};{x}H");
             let _ = print_str(&ansi_cursor_set);
         } else {
-            let handle = GetStdHandle(STD_OUTPUT_HANDLE);
-            if handle == std::ptr::null() {
-                return;
-            }
-
             let position = Coord { x: x - 1, y: y - 1 };
-            SetConsoleCursorPosition(handle, position);
+            SetConsoleCursorPosition(stdout, position);
         }
     }
 }
@@ -459,12 +465,8 @@ pub fn color_reset() {
             let ansi_reset = "\x1b[0m";
             print_str(ansi_reset);
         } else {
-            let handle = GetStdHandle(STD_OUTPUT_HANDLE);
-            if handle == std::ptr::null() {
-                return;
-            }
             let color_white = 15;
-            SetConsoleTextAttribute(handle, color_white);
+            SetConsoleTextAttribute(stdout, color_white);
         }
     }
 }

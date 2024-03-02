@@ -28,29 +28,38 @@ fn console_test1() {
 }
 
 fn console_test2() {
-    let mut x = 1i16;
-    let mut y = 1i16;
+    let mut x = 10i16;
+    let mut y = 10i16;
 
     //console_clear();
     loop {
         let value = read_key();
         //println!("{value:?}");
         match value {
-            KeyCode::ArrowUp => x -= 1,
-            KeyCode::ArrowDown => x += 1,
-            KeyCode::ArrowRight => y += 1,
-            KeyCode::ArrowLeft => y -= 1,
+            KeyCode::ArrowUp => y -= 1,
+            KeyCode::ArrowDown => y += 1,
+            KeyCode::ArrowRight => x += 1,
+            KeyCode::ArrowLeft => x -= 1,
             _ => {}
         }
 
+        use std::io::Write;
+
         console_clear();
-        cursor_set(x - 1, y);
-        println!("   TERMA UTILS");
+
+        cursor_set(x, y - 1);
+        print!("   TERMA UTILS");
+        std::io::stdout().flush();
+
         cursor_set(x, y);
-        println!("{:?}", cursor_get());
-        cursor_set(x + 1, y);
-        println!("    {:?}", value);
-        cursor_set(x + 2, y + 8);
+        print!("{:?}", cursor_get());
+        std::io::stdout().flush();
+
+        cursor_set(x, y + 1);
+        print!("    {:?}", value);
+        std::io::stdout().flush();
+
+        cursor_set(x + 8, y + 2);
     }
 }
 
@@ -73,6 +82,6 @@ fn main() {
     terma_init();
 
     // console_test1();
-    // console_test2();
-    console_test3();
+    console_test2();
+    // console_test3();
 }
